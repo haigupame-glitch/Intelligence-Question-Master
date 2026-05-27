@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidQuestion(q) {
+      return q.keys().hasAll(['id', 'type', 'question', 'answer', 'marks']) 
+        && q.id is string && q.id.size() <= 128
+        && q.type is string && q.type.size() <= 64
+        && q.question is string && q.question.size() <= 2000
+        && q.answer is string && q.answer.size() <= 2000
+        && q.marks is number
+        // optional: options, complexity
+        && (!q.keys().hasAny(['options']) || q.options is list)
+        && (!q.keys().hasAny(['complexity']) || (q.complexity is string && q.complexity.size() <= 64));
+    }
+
+    function isValidQuestionsList(qs) {
+      return qs is list && qs.size() <= 200 && (qs.size() == 0 || isValidQuestion(qs[0]));
+    }
+
+    function isValidQuiz(data) {
+      return data.keys().hasAll(['userId', 'title', 'questions'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 500
+        && isValidQuestionsList(data.questions)
+        // optional: createdAt, examType, chapterName, totalMarks, subject, classLevel
+        && (!data.keys().hasAny(['createdAt']) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!data.keys().hasAny(['examType']) || (data.examType is string && data.examType.size() <= 128))
+        && (!data.keys().hasAny(['chapterName']) || (data.chapterName is string && data.chapterName.size() <= 200))
+        && (!data.keys().hasAny(['totalMarks']) || data.totalMarks is number)
+        && (!data.keys().hasAny(['duration']) || data.duration is number)
+        && (!data.keys().hasAny(['subject']) || (data.subject is string && data.subject.size() <= 128))
+        && (!data.keys().hasAny(['classLevel']) || (data.classLevel is string && data.classLevel.size() <= 64));
+    }
+
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && userId == request.auth.uid;
+    }
+
+    match /quizzes/{quizId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(quizId)
+                    && isValidQuiz(incoming());
+
+      allow update: if isSignedIn()
+                    && isValidId(quizId)
+                    && existing().userId == request.auth.uid
+                    && isValidQuiz(incoming())
+                    && incoming().userId == existing().userId; // Immutable
+      
+      allow delete: if isSignedIn() 
+                    && isValidId(quizId) 
+                    && existing().userId == request.auth.uid;
+    }
+
+    match /attempts/{attemptId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.studentId == request.auth.uid;
+    }
+  }
+}
