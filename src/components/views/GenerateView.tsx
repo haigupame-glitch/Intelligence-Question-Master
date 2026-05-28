@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { UploadCloud, Loader2, Sparkles, AlertCircle, Image as ImageIcon, X, Clock, Trash2, ArrowRight } from "lucide-react";
+import { UploadCloud, Loader2, Sparkles, AlertCircle, Image as ImageIcon, X, Clock, Trash2, ArrowRight, FileText } from "lucide-react";
 import type { Quiz } from "@/src/types";
 import { auth, db } from "@/src/lib/firebase";
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, orderBy } from "firebase/firestore";
@@ -20,6 +20,8 @@ interface ImageUpload {
 export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
   const { canGenerate, incrementGeneration, generationsLeft, subscription } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvContent, setCsvContent] = useState("");
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageUpload[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,6 +137,86 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
 
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCsvImport = async () => {
+    if (!csvContent.trim()) {
+      setError("Please paste some CSV content.");
+      setShowCsvModal(false);
+      return;
+    }
+    
+    // Parse CSV
+    const rows = csvContent.split(/\r?\n/);
+    const parsedQuestions: any[] = [];
+    
+    let currentId = 1;
+    
+    for (const row of rows) {
+      if (!row.trim()) continue;
+      
+      const arr: string[] = [];
+      let quote = false;
+      let col = 0;
+      for (let c = 0; c < row.length; c++) {
+        const cc = row[c], nc = row[c+1];
+        arr[col] = arr[col] || '';
+        if (cc === '"' && quote && nc === '"') { arr[col] += cc; ++c; continue; }
+        if (cc === '"') { quote = !quote; continue; }
+        if (cc === ',' && !quote) { ++col; continue; }
+        arr[col] += cc;
+      }
+      
+      const columns = arr.map(s => s.trim());
+      
+      if (columns.length >= 6) {
+        // [Question, Option1, Option2, Option3, Option4, Answer, Marks]
+        const questionText = columns[0];
+        const options = [columns[1], columns[2], columns[3], columns[4]];
+        const answer = columns[5];
+        const marks = columns.length >= 7 ? parseFloat(columns[6]) || 1 : 1;
+        
+        parsedQuestions.push({
+          id: `csv-${Date.now()}-${currentId++}`,
+          type: "multiple_choice",
+          question: questionText,
+          options,
+          answer,
+          marks
+        });
+      }
+    }
+    
+    if (parsedQuestions.length === 0) {
+      setError("Could not parse any valid questions from the CSV. Ensure the format is: Question, Opt 1, Opt 2, Opt 3, Opt 4, Answer, Marks");
+      setShowCsvModal(false);
+      return;
+    }
+    
+    const generatedQuizData = {
+      title: `${subject || 'Generated'} Quiz - ${chapterName || 'Custom'}`,
+      subject: subject || 'General',
+      classLevel: classLevel || 'Any',
+      examType: examType || 'Practice Quiz',
+      totalMarks: parsedQuestions.reduce((sum, q) => sum + (q.marks || 1), 0),
+      questions: parsedQuestions,
+      userId: auth.currentUser?.uid,
+      createdAt: new Date().toISOString()
+    };
+    
+    try {
+      setLoading(true);
+      const savedQuiz = await saveToLocal(generatedQuizData as any);
+      if (savedQuiz) {
+        onQuizGenerated(savedQuiz as Quiz);
+      }
+      setShowCsvModal(false);
+      setCsvContent('');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generateQuiz = async () => {
@@ -284,7 +366,7 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Paste syllabus, textbook excerpts, or lecture notes here..."
+            placeholder="Paste syllabus, textbook excerpts, lecture notes, or CSV formatted questions here..."
             className="flex-1 w-full min-h-[250px] p-6 bg-transparent border-0 focus:ring-0 resize-none outline-none text-slate-700 dark:text-slate-200 leading-relaxed font-sans"
           />
           
@@ -322,7 +404,7 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
         </div>
         
         <div className="p-4 border-t bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-          <div>
+          <div className="flex items-center gap-2">
             <input 
               type="file" 
               multiple 
@@ -337,6 +419,13 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
             >
               <ImageIcon className="w-4 h-4" />
               Add Images/Scans
+            </button>
+            <button 
+              onClick={() => setShowCsvModal(true)}
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 font-medium text-sm px-3 py-2 rounded-md hover:bg-indigo-50 transition-colors"
+            >
+               <FileText className="w-4 h-4" />
+               Paste CSV
             </button>
           </div>
           
@@ -421,6 +510,42 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
                <button onClick={() => setShowUpgradeModal(false)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors">Maybe Later</button>
                <button onClick={() => { setShowUpgradeModal(false); /* The parent needs to navigate, but we can't easily here without prop. We'll just alert for now, or you can switch view */ alert("Please click Subscription in the sidebar to upgrade!"); }} className="px-5 py-2.5 bg-indigo-600 text-white font-medium hover:bg-indigo-700 rounded-lg transition-colors shadow-sm cursor-pointer">Upgrade to Premium</button>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSV Import Modal */}
+      {showCsvModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-2xl w-full p-6 flex flex-col">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Paste CSV Data</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-4 text-sm">
+              Ensure your CSV rows follow this format: <br/>
+              <code className="text-xs bg-slate-100 dark:bg-slate-900 p-1 rounded font-mono">Question, Option 1, Option 2, Option 3, Option 4, Answer, Marks</code>
+            </p>
+            <textarea
+              value={csvContent}
+              onChange={(e) => setCsvContent(e.target.value)}
+              placeholder='"What is the capital of France?", "London", "Berlin", "Paris", "Madrid", "Paris", 1'
+              className="w-full min-h-[250px] p-4 text-sm border border-slate-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 dark:text-slate-200 outline-none resize-none shadow-sm mb-6"
+            />
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowCsvModal(false)} 
+                className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:bg-slate-700 rounded-lg transition-colors"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleCsvImport} 
+                disabled={loading}
+                className="px-5 py-2.5 bg-indigo-600 text-white font-medium hover:bg-indigo-700 rounded-lg transition-colors shadow-sm flex items-center gap-2"
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Import Questions
+              </button>
+            </div>
           </div>
         </div>
       )}
