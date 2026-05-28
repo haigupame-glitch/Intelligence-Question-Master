@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { loginWithGoogle, auth, db } from "@/src/lib/firebase";
+import { loginWithGoogle, auth, db, handleFirestoreError, OperationType } from "@/src/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { Sparkles, Loader2, LogIn, GraduationCap, BookOpen } from "lucide-react";
 
@@ -17,7 +17,11 @@ export function LoginView() {
       // After successful login, explicitly set the role in Firestore
       if (result.user) {
         const docRef = doc(db, 'users', result.user.uid);
-        await setDoc(docRef, { role: role }, { merge: true });
+        try {
+          await setDoc(docRef, { role: role }, { merge: true });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${result.user.uid}`);
+        }
       }
     } catch (err: any) {
       setError(err.message || "Failed to sign in. Please try again.");

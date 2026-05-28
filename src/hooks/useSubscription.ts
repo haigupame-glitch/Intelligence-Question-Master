@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firebase';
 
 export interface UserSubscription {
   plan: 'free' | 'premium';
@@ -46,7 +47,7 @@ export function useSubscription() {
             setSubscription(DEFAULT_SUBSCRIPTION);
           }
         } catch (err) {
-          console.error("Failed to initialize user subscription:", err);
+          handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}`);
         }
       };
       
@@ -57,6 +58,8 @@ export function useSubscription() {
           setSubscription(docSnap.data() as UserSubscription);
         }
         setLoading(false);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}`);
       });
     });
 
@@ -72,7 +75,7 @@ export function useSubscription() {
       const docRef = doc(db, 'users', auth.currentUser.uid);
       await setDoc(docRef, { role }, { merge: true });
     } catch (err) {
-      console.error("Failed to set role:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 
@@ -87,7 +90,7 @@ export function useSubscription() {
         downloadsCount: subscription.downloadsCount,
       }, { merge: true });
     } catch (err) {
-      console.error("Upgrade failed:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 
@@ -99,7 +102,7 @@ export function useSubscription() {
         generationsCount: subscription.generationsCount + 1,
       }, { merge: true });
     } catch (err) {
-      console.error("Increment failed:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 
@@ -111,7 +114,7 @@ export function useSubscription() {
         downloadsCount: subscription.downloadsCount + 1,
       }, { merge: true });
     } catch (err) {
-      console.error("Increment download failed:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 

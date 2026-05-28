@@ -32,8 +32,7 @@ export function QuizEditorView({ quiz, setQuiz }: QuizEditorViewProps) {
           examType: quiz.examType
         });
       } catch (err) {
-        // Suppress warning
-        console.error(err);
+        handleFirestoreError(err, OperationType.UPDATE, `quizzes/${quiz.id}`);
       } finally {
         setSaving(false);
       }

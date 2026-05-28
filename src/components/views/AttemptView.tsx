@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Quiz } from '@/src/types';
 import { Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { auth, db } from '@/src/lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 
 interface AttemptViewProps {
@@ -99,14 +99,7 @@ export function AttemptView({ quiz, onFinish }: AttemptViewProps) {
       });
       setIsSubmitted(true);
     } catch (err: any) {
-      console.error("Failed to submit attempt payload:", {
-        quizId: quiz.id || 'unknown',
-        studentId: auth.currentUser.uid,
-        score,
-        totalMarks
-      });
-      console.error(err);
-      setSubmitError(err.message || JSON.stringify(err));
+      handleFirestoreError(err, OperationType.CREATE, 'attempts');
     } finally {
       setIsSubmitting(false);
     }

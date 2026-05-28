@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, ClipboardList, Search, LogOut, Loader2, Sparkles } from 'lucide-react';
-import { auth, db } from '@/src/lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import type { Quiz } from '@/src/types';
 import { AttemptView } from './AttemptView';
@@ -36,7 +36,7 @@ export function StudentDashboard() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAttempts(data);
     } catch (err) {
-      console.error("Failed to fetch history", err);
+      handleFirestoreError(err, OperationType.LIST, 'attempts');
     }
     setLoadingHistory(false);
   };
@@ -61,8 +61,7 @@ export function StudentDashboard() {
       quizData.id = quizSnap.id;
       setActiveQuiz(quizData);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to join quiz.');
+      handleFirestoreError(err, OperationType.GET, `quizzes/${quizCode.trim()}`);
     }
     setLoading(false);
   };
