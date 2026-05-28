@@ -24,7 +24,14 @@ export function LoginView() {
         }
       }
     } catch (err: any) {
-      setError(err.message || "Failed to sign in. Please try again.");
+      console.error(err);
+      if (err.message?.includes('popup') || err.message?.includes('cross-origin') || err.code === 'auth/popup-closed-by-user') {
+        setError("Google Sign-In was blocked by your browser because the app is running in an iframe preview. Please click the 'Open in new tab' button (the arrow icon in the top right of this preview window) to open the app and sign in.");
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError("This domain is not authorized for Google Sign-In yet. Please wait a moment for the new AI Studio domain to propagate, or ensure it's added in the Firebase console.");
+      } else {
+        setError(err.message || "Failed to sign in. Please try again.");
+      }
       setLoading(false);
       setSelectedRole(null);
     }
