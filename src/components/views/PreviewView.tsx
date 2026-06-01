@@ -1,20 +1,25 @@
 import type { Quiz } from "@/src/types";
-import { Printer, Download } from "lucide-react";
+import { Download, QrCode, X, Share2 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { useState } from "react";
+import QRCode from "react-qr-code";
 import { useSubscription, FREE_TIER_LIMITS } from "@/src/hooks/useSubscription";
 import { AttemptView } from "./AttemptView";
+import { PaywallModal } from "../PaywallModal";
 
 interface PreviewViewProps {
   quiz: Quiz | null;
+  onChangeView?: (view: string) => void;
+  onShowPaywall?: (reason: 'quiz' | 'pdf') => void;
 }
 
-export function PreviewView({ quiz }: PreviewViewProps) {
-  const { canDownload, incrementDownload } = useSubscription();
+export function PreviewView({ quiz, onChangeView, onShowPaywall }: PreviewViewProps) {
+  const { canDownload, incrementDownload, subscription } = useSubscription();
   const [isGenerating, setIsGenerating] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isAttempting, setIsAttempting] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   
   if (isAttempting) {
     // We render the AttemptView dynamically here if the user wanted to take it
@@ -22,9 +27,44 @@ export function PreviewView({ quiz }: PreviewViewProps) {
     return <AttemptView quiz={quiz} onFinish={() => setIsAttempting(false)} />;
   }
 
+  const handleDownloadQr = () => {
+    const qrElement = document.getElementById("qr-code-container");
+    if (!qrElement || !quiz?.id) return;
+    toPng(qrElement, { cacheBust: true, backgroundColor: '#ffffff' })
+      .then((dataUrl) => {
+        const link = document.createElement("a");
+        link.download = `quiz-${quiz.id}-qr.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((err) => {
+        console.error("Error generating QR code image", err);
+      });
+  };
+
+  const handleShare = async () => {
+    if (!quiz?.id) return;
+    const url = `${window.location.origin}${window.location.pathname}?quizId=${quiz.id}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: quiz.title || 'Student Quiz',
+          text: 'Join this quiz now!',
+          url: url
+        });
+      } catch (err) {
+        console.error("Error sharing:", err);
+      }
+    } else {
+      navigator.clipboard.writeText(url);
+      alert("Share link copied to clipboard!");
+    }
+  };
+
   const handlePrint = () => {
-    if (!canDownload) {
-      setShowUpgradeModal(true);
+    if (!subscription || (subscription.plan !== 'premium' && subscription.downloadsCount >= FREE_TIER_LIMITS.downloads)) {
+      onShowPaywall?.('pdf');
       return;
     }
 
@@ -117,6 +157,20 @@ export function PreviewView({ quiz }: PreviewViewProps) {
             className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50 text-indigo-700 px-5 py-2.5 rounded-lg font-medium text-sm shadow-sm transition-colors"
           >
             Take Quiz Online
+          </button>
+          <button
+            onClick={() => setShowQrModal(true)}
+            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 dark:text-slate-200 px-5 py-2.5 rounded-lg font-medium text-sm shadow-sm transition-colors"
+          >
+            <QrCode className="w-4 h-4" />
+            Export as QR
+          </button>
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 text-slate-700 dark:text-slate-200 px-5 py-2.5 rounded-lg font-medium text-sm shadow-sm transition-colors"
+          >
+            <Share2 className="w-4 h-4" />
+            Share Link
           </button>
           <button 
             onClick={handlePrint}
@@ -257,19 +311,33 @@ export function PreviewView({ quiz }: PreviewViewProps) {
       </div>
      </div>
 
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm print:hidden">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-center">
-             <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Printer className="w-8 h-8 text-indigo-600" />
-             </div>
-             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Limit Reached</h3>
-             <p className="text-slate-500 dark:text-slate-400 mb-6">You've used all {FREE_TIER_LIMITS.downloads} free PDF downloads. Upgrade to Premium for unlimited downloads.</p>
-             <div className="flex gap-3 justify-center">
-               <button onClick={() => setShowUpgradeModal(false)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors">Maybe Later</button>
-               <button onClick={() => { setShowUpgradeModal(false); alert("Please click Subscription in the sidebar to upgrade!"); }} className="px-5 py-2.5 bg-indigo-600 text-white font-medium hover:bg-indigo-700 rounded-lg transition-colors shadow-sm cursor-pointer">Upgrade to Premium</button>
-             </div>
+      {/* Share QR Modal */}
+      {showQrModal && quiz.id && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative flex flex-col items-center">
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl font-bold mb-2 text-slate-900 dark:text-white">Student Access QR</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center">
+              Scan this QR code with a mobile device to instantly join the quiz.
+            </p>
+            <div id="qr-code-container" className="bg-white p-4 rounded-xl shadow-sm mb-4">
+              <QRCode value={`${window.location.origin}${window.location.pathname}?quizId=${quiz.id}`} size={200} />
+            </div>
+            <div className="text-center font-mono font-bold text-lg tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-6 py-2 rounded-lg w-full mb-6">
+              {quiz.id}
+            </div>
+            <button
+              onClick={handleDownloadQr}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Download QR
+            </button>
           </div>
         </div>
       )}

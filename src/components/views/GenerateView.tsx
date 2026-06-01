@@ -5,9 +5,12 @@ import { auth, db } from "@/src/lib/firebase";
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, orderBy } from "firebase/firestore";
 import { handleFirestoreError, OperationType } from "@/src/lib/firebase";
 import { useSubscription, FREE_TIER_LIMITS } from "@/src/hooks/useSubscription";
+import { PaywallModal } from "../PaywallModal";
 
 interface GenerateViewProps {
   onQuizGenerated: (quiz: Quiz) => void;
+  onChangeView?: (view: string) => void;
+  onShowPaywall?: (reason: 'quiz' | 'pdf') => void;
 }
 
 interface ImageUpload {
@@ -17,7 +20,7 @@ interface ImageUpload {
   name: string;
 }
 
-export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
+export function GenerateView({ onQuizGenerated, onChangeView, onShowPaywall }: GenerateViewProps) {
   const { canGenerate, incrementGeneration, generationsLeft, subscription } = useSubscription();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
@@ -140,6 +143,12 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
   };
 
   const handleCsvImport = async () => {
+    if (!subscription || (subscription.plan !== 'premium' && subscription.generationsCount >= FREE_TIER_LIMITS.generations)) {
+      onShowPaywall?.('quiz');
+      setShowCsvModal(false);
+      return;
+    }
+
     if (!csvContent.trim()) {
       setError("Please paste some CSV content.");
       setShowCsvModal(false);
@@ -220,8 +229,8 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
   };
 
   const generateQuiz = async () => {
-    if (!canGenerate) {
-      setShowUpgradeModal(true);
+    if (!subscription || (subscription.plan !== 'premium' && subscription.generationsCount >= FREE_TIER_LIMITS.generations)) {
+      onShowPaywall?.('quiz');
       return;
     }
 
@@ -493,23 +502,6 @@ export function GenerateView({ onQuizGenerated }: GenerateViewProps) {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 text-center">
-             <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-indigo-600" />
-             </div>
-             <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Limit Reached</h3>
-             <p className="text-slate-500 dark:text-slate-400 mb-6">You've used all {FREE_TIER_LIMITS.generations} free generations. Upgrade to Premium for unlimited quiz generation.</p>
-             <div className="flex gap-3 justify-center">
-               <button onClick={() => setShowUpgradeModal(false)} className="px-5 py-2.5 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors">Maybe Later</button>
-               <button onClick={() => { setShowUpgradeModal(false); /* The parent needs to navigate, but we can't easily here without prop. We'll just alert for now, or you can switch view */ alert("Please click Subscription in the sidebar to upgrade!"); }} className="px-5 py-2.5 bg-indigo-600 text-white font-medium hover:bg-indigo-700 rounded-lg transition-colors shadow-sm cursor-pointer">Upgrade to Premium</button>
-             </div>
           </div>
         </div>
       )}

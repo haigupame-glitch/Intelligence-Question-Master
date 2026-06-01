@@ -55,7 +55,10 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read, write: if isSignedIn() && userId == request.auth.uid;
+      // Allow users to update metadata, but prevent them from declaring themselves active premium users manually
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId 
+                   && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPremium', 'paymentStatus']));
     }
 
     match /quizzes/{quizId} {
@@ -81,6 +84,21 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow read: if isSignedIn();
       allow update, delete: if isSignedIn() && resource.data.studentId == request.auth.uid;
+    }
+
+    match /transactions/{transactionId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Strict billing & subscription matching parameters
+    match /settings/pricing {
+      allow read: if true; // Public pricing validation
+      allow write: if request.auth != null && request.auth.token.admin == true; // Admin exclusive control
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if isSignedIn();
     }
   }
 }

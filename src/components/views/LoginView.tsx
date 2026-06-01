@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import { loginWithGoogle, auth, db, handleFirestoreError, OperationType } from "@/src/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
-import { Sparkles, Loader2, LogIn, GraduationCap, BookOpen } from "lucide-react";
+import { Sparkles, Loader2, LogIn, GraduationCap, BookOpen, Phone } from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
 
 export function LoginView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedRole, setSelectedRole] = useState<'teacher' | 'student' | null>(null);
+  
+  const { loginAsTestUser, loading: phoneLoading, error: phoneError } = useAuth();
+  const [testPhone, setTestPhone] = useState("");
+  const [showPhoneTest, setShowPhoneTest] = useState(false);
 
   const handleLogin = async (role: 'teacher' | 'student') => {
+
     setSelectedRole(role);
     setLoading(true);
     setError("");
@@ -97,6 +103,42 @@ export function LoginView() {
             </div>
           </button>
         </div>
+
+        {/* Developer Test Login */}
+        <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
+          {!showPhoneTest ? (
+            <button 
+              onClick={() => setShowPhoneTest(true)}
+              className="text-sm font-medium text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
+            >
+              Developer: Login as Test User
+            </button>
+          ) : (
+            <div className="max-w-xs mx-auto">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 text-left">
+                Test Phone Number
+              </label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={testPhone}
+                  onChange={e => setTestPhone(e.target.value)}
+                  placeholder="e.g. 555-0100"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button 
+                  onClick={() => loginAsTestUser(testPhone)}
+                  disabled={phoneLoading || !testPhone}
+                  className="px-4 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg font-medium hover:bg-slate-800 dark:hover:bg-slate-600 transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {phoneLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
+                </button>
+              </div>
+              {phoneError && <p className="text-red-500 text-xs mt-2 text-left">{phoneError}</p>}
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

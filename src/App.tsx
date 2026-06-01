@@ -13,6 +13,7 @@ import { SettingsView } from "./components/views/SettingsView";
 import { LoginView } from "./components/views/LoginView";
 import { PricingView } from "./components/views/PricingView";
 import { StudentDashboard } from "./components/views/StudentDashboard";
+import { PaywallModal } from "./components/PaywallModal";
 import type { Quiz } from "./types";
 import { auth, db } from "./lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
@@ -29,6 +30,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const { subscription, loading: subLoading, setRole } = useSubscription();
 
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+  const [paywallReason, setPaywallReason] = useState<'quiz' | 'pdf'>('quiz');
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -36,6 +40,14 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qid = params.get('quizId');
+    if (qid && user && subscription && !subscription.role && !subLoading) {
+      setRole('student');
+    }
+  }, [user, subscription, subLoading, setRole]);
 
   const handleQuizGenerated = (newQuiz: Quiz) => {
     setQuiz(newQuiz);
@@ -104,9 +116,17 @@ export default function App() {
       
       <main className="flex-1 overflow-y-auto print:overflow-visible print:block">
         <div className="h-full px-8 py-4 print:p-0">
-          {currentView === "generate" && <GenerateView onQuizGenerated={handleQuizGenerated} />}
+          {currentView === "generate" && <GenerateView 
+            onQuizGenerated={handleQuizGenerated} 
+            onChangeView={setCurrentView}
+            onShowPaywall={(reason) => { setPaywallReason(reason); setIsPaywallOpen(true); }}
+          />}
           {currentView === "editor" && <QuizEditorView quiz={quiz} setQuiz={setQuiz} />}
-          {currentView === "preview" && <PreviewView quiz={quiz} />}
+          {currentView === "preview" && <PreviewView 
+            quiz={quiz} 
+            onChangeView={setCurrentView}
+            onShowPaywall={(reason) => { setPaywallReason(reason); setIsPaywallOpen(true); }}
+          />}
           {currentView === "analytics" && <AnalyticsView />}
           {currentView === "settings" && <SettingsView />}
           {currentView === "pricing" && <PricingView />}
@@ -118,6 +138,16 @@ export default function App() {
           )}
         </div>
       </main>
+
+      <PaywallModal 
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        onNavigateToPricing={() => {
+          setIsPaywallOpen(false);
+          setCurrentView('pricing');
+        }}
+        reason={paywallReason}
+      />
     </div>
   );
 }

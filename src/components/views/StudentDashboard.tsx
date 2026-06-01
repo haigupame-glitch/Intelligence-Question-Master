@@ -23,6 +23,37 @@ export function StudentDashboard() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qid = params.get('quizId');
+    if (qid && activeTab === 'join') {
+      setQuizCode(qid);
+      handleJoinQuizInitial(qid);
+      // Clean up URL to prevent repeating
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const handleJoinQuizInitial = async (code: string) => {
+    if (!code.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const quizRef = doc(db, 'quizzes', code.trim());
+      const quizSnap = await getDoc(quizRef);
+      if (quizSnap.exists()) {
+        const quizData = quizSnap.data() as Quiz;
+        quizData.id = quizSnap.id;
+        setActiveQuiz(quizData);
+      } else {
+        setError('Quiz not found. Please check the code and try again.');
+      }
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.GET, `quizzes/${code.trim()}`);
+    }
+    setLoading(false);
+  };
+
   const fetchHistory = async () => {
     if (!auth.currentUser) return;
     setLoadingHistory(true);

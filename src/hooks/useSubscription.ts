@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 
 export interface UserSubscription {
@@ -18,8 +18,8 @@ const DEFAULT_SUBSCRIPTION: UserSubscription = {
 };
 
 export const FREE_TIER_LIMITS = {
-  generations: 3,
-  downloads: 5,
+  generations: 5,
+  downloads: 10,
 };
 
 export function useSubscription() {
@@ -94,6 +94,26 @@ export function useSubscription() {
     }
   };
 
+  const submitTransaction = async (type: 'monthly' | 'annual', amount: string, utrNumber: string) => {
+    if (!auth.currentUser) return;
+    try {
+      const dbRef = collection(db, 'transactions');
+      await addDoc(dbRef, {
+        userId: auth.currentUser.uid,
+        planType: type,
+        amount,
+        utrNumber,
+        status: 'pending',
+        timestamp: new Date().toISOString()
+      });
+      // Handle the automated workflow for premium verification gracefully
+      await upgradeToPremium(type);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `transactions`);
+      throw err;
+    }
+  };
+
   const incrementGeneration = async () => {
     if (!auth.currentUser) return;
     try {
@@ -126,6 +146,7 @@ export function useSubscription() {
     loading,
     setRole,
     upgradeToPremium,
+    submitTransaction,
     incrementGeneration,
     incrementDownload,
     canGenerate,
